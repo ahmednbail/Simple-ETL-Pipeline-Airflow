@@ -120,14 +120,18 @@ def load_to_sql_server(ti):
 
     df = pd.read_csv(cleaned_path)
 
-    server = 'localhost'
-    database = 'master'
-    username = 'sa'
-    password = 'StrongPass123'
+    server = os.getenv("SQL_SERVER_HOST", "host.docker.internal")
+    port = os.getenv("SQL_SERVER_PORT", "1433")
+    database = os.getenv("SQL_SERVER_DATABASE", "master")
+    username = os.getenv("SQL_SERVER_USER", "sa")
+    password = os.getenv("SQL_SERVER_PASSWORD", "StrongPass123")
 
     connection_string = (
-        f"mssql+pyodbc://{username}:{password}@{server}/{database}"
-        "?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+        f"mssql+pyodbc://{username}:{password}@{server}:{port}/{database}"
+        "?driver=ODBC+Driver+18+for+SQL+Server"
+        "&TrustServerCertificate=yes"
+        "&Encrypt=no"
+        "&Connection Timeout=30"
     )
 
     engine = create_engine(connection_string)

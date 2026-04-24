@@ -11,3 +11,6 @@ CREATE TABLE trolling.Transactions (
     TransactionType   NVARCHAR(20)   NULL,
     amount_flag       NVARCHAR(50)   NULL
 );
+
+
+select * from trolling.Transactions

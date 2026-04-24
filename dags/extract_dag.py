@@ -1,30 +1,58 @@
-import pandas as pd 
+import os
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
-from datetime import datetime
+from sqlalchemy import create_engine, text
 
 
 default_args ={
     "owner" : "Ahmed Nab",
-    "depends_on_past" : "False",
+    "depends_on_past" : False,
     "retries" : 1,
     "start_date": datetime(2026,4,24)
 }
 
 dag= DAG(
-
-      dag_id='Extract_transfer_dag',
+      dag_id='etl_pipeline_dag',
       default_args=default_args,
-      description="Extract data from local device",
+      description="Extract, transform, and load transactions",
       schedule='@daily',
       catchup=False,
-      tags=['Extract','transfer','local']
+      tags=['etl','local']
 )
 
 
-Path=r"D:\Ahmed\Data engineering - MSC\Simple-ETL-Pipeline-Airflow\Transactions.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CSV_PATH = PROJECT_ROOT / "include" / "Transactions.csv"
+DEFAULT_CLEANED_CSV_PATH = PROJECT_ROOT / "include" / "cleaned_transactions.csv"
 
-def clean_transactions(filepath: str) -> pd.DataFrame:
+
+def resolve_transactions_path() -> str:
+    configured = os.getenv("TRANSACTIONS_CSV_PATH")
+    if configured:
+        candidate = Path(configured)
+    else:
+        candidate = DEFAULT_CSV_PATH
+
+    if not candidate.exists():
+        raise FileNotFoundError(
+            f"Transactions file not found at '{candidate}'. "
+            "Set TRANSACTIONS_CSV_PATH to the correct path."
+        )
+    return str(candidate)
+
+
+def resolve_cleaned_transactions_path() -> str:
+    configured = os.getenv("CLEANED_TRANSACTIONS_CSV_PATH")
+    candidate = Path(configured) if configured else DEFAULT_CLEANED_CSV_PATH
+    return str(candidate)
+
+
+def clean_transactions() -> pd.DataFrame:
+    filepath = resolve_transactions_path()
     df = pd.read_csv(filepath)
     original_len = len(df)
     report = {}
@@ -77,13 +105,60 @@ def clean_transactions(filepath: str) -> pd.DataFrame:
     print(f"  Rows after cleaning           : {len(df):,}")
     print("──────────────────────────────────────────────────────────────────────\n")
 
-    return df
-clean_transactions(Path)
+    output_path = Path(resolve_cleaned_transactions_path())
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+    print(f"Cleaned file written to: {output_path}")
 
-extract_transfer=PythonOperator(
-    task_id='extract_transfer',
-    python_callable=clean_transactions(Path),
+    return str(output_path)
+
+
+def load_to_sql_server(ti):
+    cleaned_path = ti.xcom_pull(task_ids="extract_transform")
+    if not cleaned_path:
+        raise ValueError("No cleaned file path received from extract_transform task.")
+
+    df = pd.read_csv(cleaned_path)
+
+    server = 'localhost'
+    database = 'master'
+    username = 'sa'
+    password = 'StrongPass123'
+
+    connection_string = (
+        f"mssql+pyodbc://{username}:{password}@{server}/{database}"
+        "?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+    )
+
+    engine = create_engine(connection_string)
+
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT name FROM sys.databases"))
+        for row in result:
+            print(row.name)
+
+    df.to_sql(
+        name="Transactions",
+        con=engine,
+        schema="trolling",
+        if_exists="replace",
+        index=False
+    )
+
+    print("Data loaded successfully.")
+
+
+extract_transform=PythonOperator(
+    task_id='extract_transform',
+    python_callable=clean_transactions,
     dag=dag,
 )
 
+load_data=PythonOperator(
+    task_id='load_data',
+    python_callable=load_to_sql_server,
+    dag=dag,
+)
+
+extract_transform >> load_data
 

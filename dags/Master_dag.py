@@ -16,7 +16,6 @@ dag = DAG(
     dag_id="master_transfer_dag",
     description="All transfer DAGs",
     schedule="05 00 * * *",
-    concurrency=6,
     max_active_runs=1,
     default_args=default_args,
     tags=["master_transfer"],

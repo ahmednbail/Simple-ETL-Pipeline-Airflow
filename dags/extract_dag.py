@@ -22,7 +22,7 @@ dag= DAG(
 )
 
 
-Path=r"D:\Ahmed\Data engineering - MSC\Banking-ETL-Pipeline-Data-Processing\Data\Transactions.csv"
+Path=r"D:\Ahmed\Data engineering - MSC\Simple-ETL-Pipeline-Airflow\Transactions.csv"
 
 def clean_transactions(filepath: str) -> pd.DataFrame:
     df = pd.read_csv(filepath)
